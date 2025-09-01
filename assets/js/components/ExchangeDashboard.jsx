@@ -25,8 +25,8 @@ export default function ExchangeDashboard() {
     const [date, setDate] = useState(()=> new Date().toISOString().slice(0,10));
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [sel, setSel] = useState(null);
-    const [hist, setHist] = useState(null);
+    const [sel, setSel] = useState(null);     // wybrany kod do historii
+    const [hist, setHist] = useState(null);   // payload historii lub null (ładowanie) / [] (brak)
     const [error, setError] = useState(null);
     const [snack, setSnack] = useState(null);
 
@@ -84,7 +84,7 @@ export default function ExchangeDashboard() {
                         <th className="t-right">Kurs średni</th>
                         <th className="t-right">Kupno</th>
                         <th className="t-right">Sprzedaż</th>
-                        <th className="t-center">Wykres</th>
+                        <th className="t-right">Spread</th>
                         <th className="t-center">Akcje</th>
                     </tr>
                     </thead>
@@ -95,14 +95,17 @@ export default function ExchangeDashboard() {
                             <td className="t-right">{fmt(row.mid)}</td>
                             <td className="t-right">{row.buy!==null ? fmt(row.buy) : '—'}</td>
                             <td className="t-right">{row.sell!==null ? fmt(row.sell) : '—'}</td>
-                            <td className="t-center">
-                                <div className="spark-wrap" style={{display:'inline-block'}}>
-                                    {/* szybki podgląd: sprzedaż względem mid (tu prosto mid) */}
-                                    <Sparkline data={[row.mid*0.98,row.mid,row.mid*1.02]} width={120} height={28}/>
-                                </div>
+                            <td className="t-right">
+                                {
+                                    (row.buy!=null && row.sell!=null)
+                                        ? fmt(row.sell - row.buy)         // EUR, USD
+                                        : (row.sell!=null ? fmt(row.sell - row.mid) : '—') // inne: marża vs mid
+                                }
                             </td>
                             <td className="t-center">
-                                <Button kind="primary" size="sm" onClick={()=>setSel(row.code)}>Historia</Button>
+                                <Button kind="primary" size="sm" onClick={() => { setHist(null); setSel(row.code); }}>
+                                    Historia
+                                </Button>
                             </td>
                         </tr>
                     ))}
@@ -110,17 +113,23 @@ export default function ExchangeDashboard() {
                 </table>
             </div>
 
-            {/* Modal drawer z historią */}
-            <Modal open={!!(sel && hist)} onClose={()=>{ setSel(null); setHist(null); }}>
-                {sel && hist && (
-                    <>
-                        <header>
-                            <h3 style={{margin:0}}>Historia: {sel} &nbsp;
-                                <span className="subtle">(14 dni przed {formatPL(date)})</span>
-                            </h3>
-                            <Button kind="ghost" onClick={()=>{ setSel(null); setHist(null); }}>Zamknij ✕</Button>
-                        </header>
+            {/* Modal otwieramy, gdy jest wybrana waluta; treść zależy od hist */}
+            <Modal open={!!sel} onClose={()=>{ setSel(null); setHist(null); }}>
+                <header>
+                    <h3 style={{margin:0}}>
+                        Historia: {sel} <span className="subtle">(14 dni przed {formatPL(date)})</span>
+                    </h3>
+                    <Button kind="ghost" onClick={()=>{ setSel(null); setHist(null); }}>Zamknij ✕</Button>
+                </header>
 
+                {/* Stan ładowania */}
+                {!hist && (
+                    <div className="card card-ghost">Ładowanie danych historycznych…</div>
+                )}
+
+                {/* Gdy są dane */}
+                {hist && hist.items && hist.items.length > 0 && (
+                    <>
                         {/* KPIs */}
                         <div className="kpis">
                             {(() => {
@@ -186,6 +195,13 @@ export default function ExchangeDashboard() {
                             </table>
                         </div>
                     </>
+                )}
+
+                {/* Gdy brak danych */}
+                {hist && (!hist.items || hist.items.length === 0) && (
+                    <div className="card card-ghost">
+                        Brak danych historycznych dla {sel} przed {formatPL(date)}.
+                    </div>
                 )}
             </Modal>
 

@@ -67,3 +67,13 @@ Zakończenie pracy i wysłanie wyniku
      1. Twoich komentarzy dot. podejścia do zadania itd 
         1. np. _“Robiąc X miałem na względzie Y, zastosowałem podejście Z”_ 
   1. **Prosimy, potwierdź nam mailowo wykonanie zadania, wysyłając link do Pull Requesta w swoim forku. Upewnij się, że Twój PR będzie dla nas dostępny - przynajmniej dla usera `mkleska-telemedi`!**
+
+Notateczki
+------------
+- lepsza obsługa errorów i komunikatów
+- zablokowanie dat do przodu
+- cousour pointer na kalendarzu
+- lepszy kalendarz
+- nagłówki niedostosowane do zawartości w tabeli
+- Data notowań niewycentrowana do kalendarza
+- przycisk historia nie działa
