@@ -2,15 +2,30 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { getRates, getHistory } from '../api';
 import Sparkline from './Sparkline';
 import Snackbar from './Snackbar';
+import Modal from './Modal';
+import Button from './Button';
+import Tag from './Tag';
 import { isWeekend, formatPL } from '../utils/date';
 
 const SUPPORTED = ['EUR','USD','CZK','IDR','BRL'];
+
+function fmt(n){ return (typeof n === 'number' ? n.toFixed(4) : '—'); }
+function stats(arr){
+    if(!arr?.length) return {min:null,max:null,avg:null};
+    let min=arr[0], max=arr[0], sum=0;
+    for(const v of arr){ if(v<min) min=v; if(v>max) max=v; sum+=v; }
+    return {min, max, avg: sum/arr.length};
+}
+function addDays(iso, delta){
+    const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate()+delta);
+    return d.toISOString().slice(0,10);
+}
 
 export default function ExchangeDashboard() {
     const [date, setDate] = useState(()=> new Date().toISOString().slice(0,10));
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [sel, setSel] = useState(null); // wybrany kod do historii
+    const [sel, setSel] = useState(null);
     const [hist, setHist] = useState(null);
     const [error, setError] = useState(null);
     const [snack, setSnack] = useState(null);
@@ -20,21 +35,15 @@ export default function ExchangeDashboard() {
         try {
             const payload = await getRates(d);
             setData(payload);
-
-            // Weekend/święto fallback – jeśli effectiveDate != requestedDate
             if (payload?.effectiveDate && payload?.requestedDate && payload.effectiveDate !== payload.requestedDate) {
-                const weekendMsg = isWeekend(payload.requestedDate)
+                const msg = isWeekend(payload.requestedDate)
                     ? `Kursy NBP nie aktualizują się w weekendy. Wyświetlono notowania z ${formatPL(payload.effectiveDate)}.`
                     : `Brak notowań w wybranym dniu. Wyświetlono notowania z ${formatPL(payload.effectiveDate)}.`;
-                setSnack(weekendMsg);
+                setSnack(msg);
             }
-        } catch (e) {
-            setError(e.message);
-        } finally {
-            setLoading(false);
-        }
+        } catch (e) { setError(e.message); }
+        finally { setLoading(false); }
     };
-
     useEffect(()=> { fetchRates(date); }, [date]);
 
     useEffect(() => {
@@ -43,93 +52,146 @@ export default function ExchangeDashboard() {
             try {
                 const r = await getHistory(sel, date, 14);
                 setHist(r);
-                if (!r?.items?.length) {
-                    setSnack(`Brak danych historycznych dla ${sel} przed ${formatPL(date)}.`);
-                }
-            } catch (e) {
-                setError(e.message);
-            }
+                if (!r?.items?.length) setSnack(`Brak danych historycznych dla ${sel} przed ${formatPL(date)}.`);
+            } catch (e) { setError(e.message); }
         })();
     }, [sel, date]);
 
     const items = useMemo(()=> (data?.items || []).sort((a,b)=>SUPPORTED.indexOf(a.code)-SUPPORTED.indexOf(b.code)), [data]);
+    const effectiveInfo = data?.effectiveDate ? `Pokazano notowania z ${formatPL(data.effectiveDate)}` : null;
 
     return (
-        <div className="container" style={{maxWidth:960, margin:'2rem auto', fontFamily:'system-ui, sans-serif'}}>
+        <div className="container">
             <h1>Kursy walut (kantor)</h1>
-            <div style={{display:'flex', gap:'1rem', alignItems:'center', marginBottom:'1rem'}}>
-                <label>Data:&nbsp;
+            <div className="toolbar">
+                <div className="chips">
+                    <span className="subtle">Data notowań:</span>
                     <input type="date" value={date} onChange={e=>setDate(e.target.value)} />
-                </label>
-                {loading && <span>Ładowanie…</span>}
+                    <Button size="sm" onClick={()=>setDate(new Date().toISOString().slice(0,10))}>Dziś</Button>
+                    <Button size="sm" onClick={()=>setDate(addDays(date,-1))}>-1d</Button>
+                    <Button size="sm" onClick={()=>setDate(addDays(date,-7))}>-7d</Button>
+                </div>
+                <div className="spacer" />
+                {effectiveInfo && <Tag>{effectiveInfo}</Tag>}
+                {loading && <span className="subtle">Ładowanie…</span>}
             </div>
 
-            <table style={{width:'100%', borderCollapse:'collapse'}}>
-                <thead>
-                <tr>
-                    <th style={{textAlign:'left'}}>Waluta</th>
-                    <th style={{textAlign:'right'}}>Kurs średni</th>
-                    <th style={{textAlign:'right'}}>Kupno</th>
-                    <th style={{textAlign:'right'}}>Sprzedaż</th>
-                    <th style={{textAlign:'center'}}>Historia (14 dni)</th>
-                </tr>
-                </thead>
-                <tbody>
-                {items.map(row=>(
-                    <tr key={row.code} style={{borderTop:'1px solid #ddd'}}>
-                        <td>{row.code}</td>
-                        <td style={{textAlign:'right'}}>{row.mid.toFixed(4)}</td>
-                        <td style={{textAlign:'right'}}>{row.buy!==null ? row.buy.toFixed(4) : '—'}</td>
-                        <td style={{textAlign:'right'}}>{row.sell!==null ? row.sell.toFixed(4) : '—'}</td>
-                        <td style={{textAlign:'center'}}>
-                            <button onClick={()=>setSel(row.code)}>Pokaż</button>
-                        </td>
+            <div className="card">
+                <table className="table">
+                    <thead>
+                    <tr>
+                        <th>Waluta</th>
+                        <th className="t-right">Kurs średni</th>
+                        <th className="t-right">Kupno</th>
+                        <th className="t-right">Sprzedaż</th>
+                        <th className="t-center">Wykres</th>
+                        <th className="t-center">Akcje</th>
                     </tr>
-                ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                    {items.map(row=>(
+                        <tr key={row.code}>
+                            <td><span className="code">{row.code}</span></td>
+                            <td className="t-right">{fmt(row.mid)}</td>
+                            <td className="t-right">{row.buy!==null ? fmt(row.buy) : '—'}</td>
+                            <td className="t-right">{row.sell!==null ? fmt(row.sell) : '—'}</td>
+                            <td className="t-center">
+                                <div className="spark-wrap" style={{display:'inline-block'}}>
+                                    {/* szybki podgląd: sprzedaż względem mid (tu prosto mid) */}
+                                    <Sparkline data={[row.mid*0.98,row.mid,row.mid*1.02]} width={120} height={28}/>
+                                </div>
+                            </td>
+                            <td className="t-center">
+                                <Button kind="primary" size="sm" onClick={()=>setSel(row.code)}>Historia</Button>
+                            </td>
+                        </tr>
+                    ))}
+                    </tbody>
+                </table>
+            </div>
 
-            {sel && hist && (
-                <div style={{marginTop:'2rem', padding:'1rem', border:'1px solid #ddd', borderRadius:8}}>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
-                        <h2>Historia: {sel} (ostatnie 14 dni przed {date})</h2>
-                        <button onClick={()=>{ setSel(null); setHist(null); }}>Zamknij</button>
-                    </div>
-                    <div style={{display:'grid', gridTemplateColumns:'1fr', gap:'1rem'}}>
-                        <div>
-                            <strong>Średni (mid)</strong>
-                            <Sparkline data={hist.items.map(x=>x.mid)} />
+            {/* Modal drawer z historią */}
+            <Modal open={!!(sel && hist)} onClose={()=>{ setSel(null); setHist(null); }}>
+                {sel && hist && (
+                    <>
+                        <header>
+                            <h3 style={{margin:0}}>Historia: {sel} &nbsp;
+                                <span className="subtle">(14 dni przed {formatPL(date)})</span>
+                            </h3>
+                            <Button kind="ghost" onClick={()=>{ setSel(null); setHist(null); }}>Zamknij ✕</Button>
+                        </header>
+
+                        {/* KPIs */}
+                        <div className="kpis">
+                            {(() => {
+                                const mids = hist.items.map(x=>x.mid);
+                                const sells = hist.items.map(x=>x.sell).filter(v=>v!=null);
+                                const buys = hist.items.map(x=>x.buy).filter(v=>v!=null);
+                                const mS = stats(mids), sS = stats(sells), bS = stats(buys);
+                                return (
+                                    <>
+                                        <div className="kpi">
+                                            <div className="label">ŚREDNI (mid) — min/avg/max</div>
+                                            <div className="value">{fmt(mS.min)} / {fmt(mS.avg)} / {fmt(mS.max)}</div>
+                                        </div>
+                                        <div className="kpi">
+                                            <div className="label">SPRZEDAŻ — min/avg/max</div>
+                                            <div className="value">{fmt(sS.min)} / {fmt(sS.avg)} / {fmt(sS.max)}</div>
+                                        </div>
+                                        <div className="kpi">
+                                            <div className="label">KUPNO — min/avg/max</div>
+                                            <div className="value">{buys.length? `${fmt(bS.min)} / ${fmt(bS.avg)} / ${fmt(bS.max)}`:'—'}</div>
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </div>
-                        <div>
-                            <strong>Sprzedaż</strong>
-                            <Sparkline data={hist.items.map(x=>x.sell)} />
-                        </div>
-                        {hist.items[0]?.buy !== null && (
-                            <div>
-                                <strong>Kupno</strong>
-                                <Sparkline data={hist.items.map(x=>x.buy)} />
+
+                        {/* Wykresy */}
+                        <div style={{display:'grid', gridTemplateColumns:'1fr', gap:10}}>
+                            <div className="spark-wrap">
+                                <strong>Średni (mid)</strong>
+                                <Sparkline data={hist.items.map(x=>x.mid)} width={680} height={64}/>
                             </div>
-                        )}
-                    </div>
-                    <div style={{marginTop:'1rem', overflowX:'auto'}}>
-                        <table>
-                            <thead><tr><th>Data</th><th>Mid</th><th>Kupno</th><th>Sprzedaż</th></tr></thead>
-                            <tbody>
-                            {hist.items.map(x=>(
-                                <tr key={x.date}>
-                                    <td>{x.date}</td>
-                                    <td>{x.mid.toFixed(4)}</td>
-                                    <td>{x.buy!==null ? x.buy.toFixed(4) : '—'}</td>
-                                    <td>{x.sell!==null ? x.sell.toFixed(4) : '—'}</td>
+                            <div className="spark-wrap">
+                                <strong>Sprzedaż</strong>
+                                <Sparkline data={hist.items.map(x=>x.sell)} width={680} height={64}/>
+                            </div>
+                            {hist.items[0]?.buy !== null && (
+                                <div className="spark-wrap">
+                                    <strong>Kupno</strong>
+                                    <Sparkline data={hist.items.map(x=>x.buy)} width={680} height={64}/>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Tabela szczegółowa */}
+                        <div style={{marginTop:12, overflowX:'auto'}}>
+                            <table className="table">
+                                <thead>
+                                <tr>
+                                    <th>Data</th><th className="t-right">Mid</th><th className="t-right">Kupno</th><th className="t-right">Sprzedaż</th>
                                 </tr>
-                            ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
-            {error && <Snackbar message={error} onClose={() => setError(null)} type="error" />}
-            {snack && <Snackbar message={snack} onClose={() => setSnack(null)} type="info" />}
+                                </thead>
+                                <tbody>
+                                {hist.items.map(x=>(
+                                    <tr key={x.date}>
+                                        <td>{formatPL(x.date)}</td>
+                                        <td className="t-right">{fmt(x.mid)}</td>
+                                        <td className="t-right">{x.buy!==null ? fmt(x.buy) : '—'}</td>
+                                        <td className="t-right">{x.sell!==null ? fmt(x.sell) : '—'}</td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
+                )}
+            </Modal>
+
+            {/* Snacki */}
+            {error && <Snackbar message={error} onClose={()=>setError(null)} type="error" />}
+            {snack && <Snackbar message={snack} onClose={()=>setSnack(null)} type="info" />}
         </div>
     );
 }
