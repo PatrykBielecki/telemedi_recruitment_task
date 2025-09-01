@@ -5,13 +5,11 @@ use App\Domain\Currency;
 use App\Service\ExchangeService;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
 
 final class RateController
 {
     public function __construct(private ExchangeService $svc) {}
 
-    #[Route('/api/rates', name: 'api_rates', methods: ['GET'])]
     public function rates(Request $req): JsonResponse
     {
         $dateStr = $req->query->get('date') ?: (new \DateTime('today'))->format('Y-m-d');
@@ -20,7 +18,6 @@ final class RateController
         return new JsonResponse(['date'=>$date->format('Y-m-d'), 'items'=>$list]);
     }
 
-    #[Route('/api/rates/{code}/history', name: 'api_rates_history', methods: ['GET'])]
     public function history(string $code, Request $req): JsonResponse
     {
         $code = strtoupper($code);

@@ -1,6 +1,6 @@
 import React from 'react';
-import { createRoot } from 'react-dom/client';
+import ReactDOM from 'react-dom';
 import ExchangeDashboard from './components/ExchangeDashboard';
 
-const container = document.getElementById('root');
-createRoot(container).render(<ExchangeDashboard />);
+const root = document.getElementById('root');
+ReactDOM.render(<ExchangeDashboard />, root);

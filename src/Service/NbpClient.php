@@ -1,39 +1,54 @@
 <?php
 namespace App\Service;
 
-use Symfony\Contracts\HttpClient\HttpClientInterface;
-use Symfony\Contracts\Cache\CacheInterface;
-use Symfony\Contracts\Cache\ItemInterface;
-
 final class NbpClient
 {
-    public function __construct(
-        private HttpClientInterface $http,
-        private CacheInterface $cache
-    ) {}
+    private string $cacheDir;
 
-    /**
-     * Zwraca mapę [code => ['mid'=>float,'date'=>Y-m-d]] dla danej daty
-     * Jeśli wybrany dzień nie ma notowania (weekend/święto), próbujemy cofać się wstecz
-     */
+    public function __construct(?string $cacheDir = null)
+    {
+        $this->cacheDir = $cacheDir ?: __DIR__ . '/../../var/nbp-cache';
+        if (!is_dir($this->cacheDir)) {
+            @mkdir($this->cacheDir, 0775, true);
+        }
+    }
+
+    private function get(string $url, int $ttl): array
+    {
+        $key = sha1($url);
+        $file = $this->cacheDir . '/' . $key . '.json';
+        if (is_file($file) && (time() - filemtime($file) < $ttl)) {
+            $data = file_get_contents($file);
+            return json_decode($data, true) ?? [];
+        }
+        $ctx = stream_context_create([
+            'http' => ['timeout' => 8, 'ignore_errors' => true, 'header' => "Accept: application/json\r\n"]
+        ]);
+        $raw = @file_get_contents($url, false, $ctx);
+        if ($raw === false) {
+            if (is_file($file)) {
+                $data = file_get_contents($file);
+                return json_decode($data, true) ?? [];
+            }
+            throw new \RuntimeException('NBP request failed');
+        }
+        $arr = json_decode($raw, true);
+        if (!is_array($arr)) {
+            throw new \RuntimeException('Invalid JSON');
+        }
+        @file_put_contents($file, json_encode($arr));
+        return $arr;
+    }
+
     public function getTableAMapForDate(\DateTimeInterface $date): array
     {
         $probe = clone $date;
         for ($i=0; $i<7; $i++) {
-            $key = 'nbp:tableA:'.$probe->format('Y-m-d');
-            $data = $this->cache->get($key, function(ItemInterface $item) use ($probe) {
-                $isToday = $probe->format('Y-m-d') === (new \DateTime('today'))->format('Y-m-d');
-                $item->expiresAfter($isToday ? 600 : 86400 * 30);
-
-                $url = sprintf('https://api.nbp.pl/api/exchangerates/tables/A/%s/?format=json', $probe->format('Y-m-d'));
-                $resp = $this->http->request('GET', $url);
-                if ($resp->getStatusCode() !== 200) {
-                    // Brak tabeli (404)
-                    throw new \RuntimeException('No table for date');
-                }
-                $json = $resp->toArray();
+            $url = sprintf('https://api.nbp.pl/api/exchangerates/tables/A/%s/?format=json', $probe->format('Y-m-d'));
+            try {
+                $json = $this->get($url, $probe->format('Y-m-d') === (new \DateTime('today'))->format('Y-m-d') ? 600 : 86400*30);
                 if (!isset($json[0]['effectiveDate'], $json[0]['rates'])) {
-                    throw new \RuntimeException('Malformed response');
+                    throw new \RuntimeException('Malformed');
                 }
                 $effective = $json[0]['effectiveDate'];
                 $out = [];
@@ -41,37 +56,26 @@ final class NbpClient
                     $out[$r['code']] = ['mid'=>(float)$r['mid'], 'date'=>$effective];
                 }
                 return $out;
-            });
-
-            if ($data) return $data;
-            $probe->modify('-1 day');
+            } catch (\Throwable $e) {
+                $probe->modify('-1 day'); // weekend/święto → cofnij dzień
+            }
         }
         throw new \RuntimeException('No NBP table found in last 7 days');
     }
 
-    /**
-     * Zwraca listę [ ['date'=>Y-m-d,'mid'=>float], ... ] dla zakresu NBP pomija weekendy
-     * endDate jest WYŁĄCZONY tylko "ostatnie N dni PRZED datą"
-     */
     public function getHistoryFor(string $code, \DateTimeInterface $endDate, int $days): array
     {
-        $end = (clone $endDate)->modify('-1 day');
+        $end = (clone $endDate)->modify('-1 day'); // „przed datą”
         $start = (clone $end)->modify(sprintf('-%d days', $days-1));
-        $key = sprintf('nbp:hist:A:%s:%s:%s', strtoupper($code), $start->format('Y-m-d'), $end->format('Y-m-d'));
-
-        return $this->cache->get($key, function(ItemInterface $item) use ($code,$start,$end) {
-            $item->expiresAfter(86400 * 30);
-            $url = sprintf('https://api.nbp.pl/api/exchangerates/rates/A/%s/%s/%s/?format=json',
-                strtoupper($code), $start->format('Y-m-d'), $end->format('Y-m-d')
-            );
-            $resp = $this->http->request('GET', $url);
-            if ($resp->getStatusCode() !== 200) return [];
-            $json = $resp->toArray();
-            $out = [];
-            foreach ($json['rates'] ?? [] as $r) {
-                $out[] = ['date'=>$r['effectiveDate'], 'mid'=>(float)$r['mid']];
-            }
-            return $out;
-        });
+        $url = sprintf(
+            'https://api.nbp.pl/api/exchangerates/rates/A/%s/%s/%s/?format=json',
+            strtoupper($code), $start->format('Y-m-d'), $end->format('Y-m-d')
+        );
+        $json = $this->get($url, 86400*30);
+        $out = [];
+        foreach ($json['rates'] ?? [] as $r) {
+            $out[] = ['date'=>$r['effectiveDate'], 'mid'=>(float)$r['mid']];
+        }
+        return $out;
     }
 }

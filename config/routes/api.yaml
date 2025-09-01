@@ -1,4 +1,9 @@
-controllers_api:
-  resource: '../../src/Controller/Api/'
-  type: attribute
-  prefix: /
+api_rates:
+  path: /api/rates
+  controller: App\Controller\Api\RateController::rates
+  methods: [GET]
+
+api_rates_history:
+  path: /api/rates/{code}/history
+  controller: App\Controller\Api\RateController::history
+  methods: [GET]
