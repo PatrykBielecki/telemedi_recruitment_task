@@ -76,4 +76,3 @@ Notateczki
 - lepszy kalendarz
 - nagłówki niedostosowane do zawartości w tabeli
 - Data notowań niewycentrowana do kalendarza
-- przycisk historia nie działa

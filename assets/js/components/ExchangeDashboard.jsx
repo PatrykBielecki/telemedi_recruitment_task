@@ -5,6 +5,7 @@ import Snackbar from './Snackbar';
 import Modal from './Modal';
 import Button from './Button';
 import Tag from './Tag';
+import DatePickerLite from './DatePickerLite';
 import { isWeekend, formatPL } from '../utils/date';
 
 const SUPPORTED = ['EUR','USD','CZK','IDR','BRL'];
@@ -63,57 +64,78 @@ export default function ExchangeDashboard() {
     return (
         <div className="container">
             <h1>Kursy walut (kantor)</h1>
+
+            {/* Górny pasek z szybkim wyborem zakresu i informacją o effectiveDate */}
             <div className="toolbar">
-                <div className="chips">
-                    <span className="subtle">Data notowań:</span>
-                    <input type="date" value={date} onChange={e=>setDate(e.target.value)} />
-                    <Button size="sm" onClick={()=>setDate(new Date().toISOString().slice(0,10))}>Dziś</Button>
-                    <Button size="sm" onClick={()=>setDate(addDays(date,-1))}>-1d</Button>
-                    <Button size="sm" onClick={()=>setDate(addDays(date,-7))}>-7d</Button>
-                </div>
                 <div className="spacer" />
                 {effectiveInfo && <Tag>{effectiveInfo}</Tag>}
                 {loading && <span className="subtle">Ładowanie…</span>}
             </div>
 
-            <div className="card">
-                <table className="table">
-                    <thead>
-                    <tr>
-                        <th>Waluta</th>
-                        <th className="t-right">Kurs średni</th>
-                        <th className="t-right">Kupno</th>
-                        <th className="t-right">Sprzedaż</th>
-                        <th className="t-right">Spread</th>
-                        <th className="t-center">Akcje</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {items.map(row=>(
-                        <tr key={row.code}>
-                            <td><span className="code">{row.code}</span></td>
-                            <td className="t-right">{fmt(row.mid)}</td>
-                            <td className="t-right">{row.buy!==null ? fmt(row.buy) : '—'}</td>
-                            <td className="t-right">{row.sell!==null ? fmt(row.sell) : '—'}</td>
-                            <td className="t-right">
-                                {
-                                    (row.buy!=null && row.sell!=null)
-                                        ? fmt(row.sell - row.buy)         // EUR, USD
-                                        : (row.sell!=null ? fmt(row.sell - row.mid) : '—') // inne: marża vs mid
-                                }
-                            </td>
-                            <td className="t-center">
-                                <Button kind="primary" size="sm" onClick={() => { setHist(null); setSel(row.code); }}>
-                                    Historia
-                                </Button>
-                            </td>
+            {/* DWIE KOLUMNY: LEWO (kalendarz), PRAWO (tabela) */}
+            <div className="layout">
+                {/* LEWA: sidebar z kalendarzem i info */}
+                <aside className="sidebar">
+                    <div className="dpl-panel">
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+                            <strong>Data notowań</strong>
+                            <Tag>{date}</Tag>
+                        </div>
+                        <DatePickerLite value={date} onChange={setDate} />
+                        <div style={{display:'flex', gap:8, marginTop:10}}>
+                            <Button size="sm" onClick={()=>setDate(new Date().toISOString().slice(0,10))}>Dziś</Button>
+                            <Button size="sm" onClick={()=>setDate(addDays(date,-1))}>-1d</Button>
+                            <Button size="sm" onClick={()=>setDate(addDays(date,-7))}>-7d</Button>
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <div className="subtle" style={{fontSize:13, marginBottom:6}}>Info</div>
+                        <div className="subtle" style={{fontSize:13}}>
+                            Kursy NBP są publikowane w dni robocze (około południa).<br/>
+                            W weekendy i święta używamy ostatniego dostępnego notowania.
+                        </div>
+                    </div>
+                </aside>
+
+                {/* PRAWA: tabela z kursami */}
+                <div className="card">
+                    <table className="table">
+                        <thead>
+                        <tr>
+                            <th>Waluta</th>
+                            <th className="t-right">Kurs średni</th>
+                            <th className="t-right">Kupno</th>
+                            <th className="t-right">Sprzedaż</th>
+                            <th className="t-right">Spread</th>
+                            <th className="t-center">Akcje</th>
                         </tr>
-                    ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                        {items.map(row=>(
+                            <tr key={row.code}>
+                                <td><span className="code">{row.code}</span></td>
+                                <td className="t-right">{fmt(row.mid)}</td>
+                                <td className="t-right">{row.buy!==null ? fmt(row.buy) : '—'}</td>
+                                <td className="t-right">{row.sell!==null ? fmt(row.sell) : '—'}</td>
+                                <td className="t-right">
+                                    {(row.buy!=null && row.sell!=null)
+                                        ? fmt(row.sell - row.buy)                // EUR, USD
+                                        : (row.sell!=null ? fmt(row.sell - row.mid) : '—')} {/* pozostałe: marża vs mid */}
+                                </td>
+                                <td className="t-center">
+                                    <Button kind="primary" size="sm" onClick={() => { setHist(null); setSel(row.code); }}>
+                                        Historia
+                                    </Button>
+                                </td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            {/* Modal otwieramy, gdy jest wybrana waluta; treść zależy od hist */}
+            {/* Modal: otwieramy od razu po wyborze waluty; pokazujemy loading, potem treść */}
             <Modal open={!!sel} onClose={()=>{ setSel(null); setHist(null); }}>
                 <header>
                     <h3 style={{margin:0}}>
