@@ -12,10 +12,24 @@ final class RateController
 
     public function rates(Request $req): JsonResponse
     {
-        $dateStr = $req->query->get('date') ?: (new \DateTime('today'))->format('Y-m-d');
-        $date = \DateTime::createFromFormat('Y-m-d', $dateStr) ?: new \DateTime('today');
-        $list = array_map(fn($dto) => $dto->toArray(), $this->svc->getRates($date));
-        return new JsonResponse(['date'=>$date->format('Y-m-d'), 'items'=>$list]);
+        try {
+            $dateStr = $req->query->get('date') ?: (new \DateTime('today'))->format('Y-m-d');
+            $date = \DateTime::createFromFormat('Y-m-d', $dateStr) ?: new \DateTime('today');
+
+            $dtos = $this->svc->getRates($date);
+            $list = array_map(fn($dto) => $dto->toArray(), $dtos);
+
+            // Effective date – weź z pierwszej pozycji; wszystkie waluty z tabeli A mają tę samą datę
+            $effective = $list[0]['date'] ?? $date->format('Y-m-d');
+
+            return new JsonResponse([
+                'requestedDate' => $date->format('Y-m-d'),
+                'effectiveDate' => $effective,
+                'items' => $list
+            ]);
+        } catch (\Throwable $e) {
+            return new JsonResponse(['error' => 'NBP jest chwilowo niedostępne. Spróbuj ponownie.'], 502);
+        }
     }
 
     public function history(string $code, Request $req): JsonResponse

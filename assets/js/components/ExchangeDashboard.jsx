@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getRates, getHistory } from '../api';
 import Sparkline from './Sparkline';
+import Snackbar from './Snackbar';
+import { isWeekend, formatPL } from '../utils/date';
 
 const SUPPORTED = ['EUR','USD','CZK','IDR','BRL'];
 
@@ -10,20 +12,43 @@ export default function ExchangeDashboard() {
     const [loading, setLoading] = useState(false);
     const [sel, setSel] = useState(null); // wybrany kod do historii
     const [hist, setHist] = useState(null);
+    const [error, setError] = useState(null);
+    const [snack, setSnack] = useState(null);
 
-    const fetchRates = async (d)=> {
+    const fetchRates = async (d) => {
         setLoading(true);
-        try { setData(await getRates(d)); }
-        finally { setLoading(false); }
+        try {
+            const payload = await getRates(d);
+            setData(payload);
+
+            // Weekend/święto fallback – jeśli effectiveDate != requestedDate
+            if (payload?.effectiveDate && payload?.requestedDate && payload.effectiveDate !== payload.requestedDate) {
+                const weekendMsg = isWeekend(payload.requestedDate)
+                    ? `Kursy NBP nie aktualizują się w weekendy. Wyświetlono notowania z ${formatPL(payload.effectiveDate)}.`
+                    : `Brak notowań w wybranym dniu. Wyświetlono notowania z ${formatPL(payload.effectiveDate)}.`;
+                setSnack(weekendMsg);
+            }
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(()=> { fetchRates(date); }, [date]);
 
-    useEffect(()=> {
+    useEffect(() => {
         if (!sel) return;
-        (async ()=>{
-            const r = await getHistory(sel, date, 14);
-            setHist(r);
+        (async () => {
+            try {
+                const r = await getHistory(sel, date, 14);
+                setHist(r);
+                if (!r?.items?.length) {
+                    setSnack(`Brak danych historycznych dla ${sel} przed ${formatPL(date)}.`);
+                }
+            } catch (e) {
+                setError(e.message);
+            }
         })();
     }, [sel, date]);
 
@@ -103,6 +128,8 @@ export default function ExchangeDashboard() {
                     </div>
                 </div>
             )}
+            {error && <Snackbar message={error} onClose={() => setError(null)} type="error" />}
+            {snack && <Snackbar message={snack} onClose={() => setSnack(null)} type="info" />}
         </div>
     );
 }
