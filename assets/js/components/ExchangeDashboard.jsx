@@ -179,22 +179,48 @@ export default function ExchangeDashboard() {
                         </div>
 
                         {/* Wykresy */}
-                        <div style={{display:'grid', gridTemplateColumns:'1fr', gap:10}}>
-                            <div className="spark-wrap">
-                                <strong>Średni (mid)</strong>
-                                <Sparkline data={hist.items.map(x=>x.mid)} width={680} height={64}/>
-                            </div>
-                            <div className="spark-wrap">
-                                <strong>Sprzedaż</strong>
-                                <Sparkline data={hist.items.map(x=>x.sell)} width={680} height={64}/>
-                            </div>
-                            {hist.items[0]?.buy !== null && (
-                                <div className="spark-wrap">
-                                    <strong>Kupno</strong>
-                                    <Sparkline data={hist.items.map(x=>x.buy)} width={680} height={64}/>
+                        {(() => {
+                            const items = hist.items || [];
+                            const start = items[0]?.date ? formatPL(items[0].date) : '';
+                            const end   = items[items.length - 1]?.date ? formatPL(items[items.length - 1].date) : '';
+
+                            const mids  = items.map(x => Number.isFinite(x.mid)  ? x.mid  : null);
+                            const sells = items.map(x => Number.isFinite(x.sell) ? x.sell : null);
+                            const buys  = items.map(x => Number.isFinite(x.buy)  ? x.buy  : null);
+
+                            const hasMid  = mids.some(Number.isFinite);
+                            const hasSell = sells.some(Number.isFinite);
+                            const hasBuy  = buys.some(Number.isFinite);
+
+                            return (
+                                <div style={{display:'grid', gridTemplateColumns:'1fr', gap:10}}>
+                                    {hasMid ? (
+                                        <div className="spark-wrap">
+                                            <strong>Średni (mid)</strong>
+                                            <Sparkline data={mids} width={880} height={64} startLabel={start} endLabel={end} />
+                                        </div>
+                                    ) : (
+                                        <div className="card card-ghost">Brak danych dla „Średni (mid)”.</div>
+                                    )}
+
+                                    {hasSell ? (
+                                        <div className="spark-wrap">
+                                            <strong>Sprzedaż</strong>
+                                            <Sparkline data={sells} width={880} height={64} startLabel={start} endLabel={end} />
+                                        </div>
+                                    ) : (
+                                        <div className="card card-ghost">Brak danych dla „Sprzedaż”.</div>
+                                    )}
+
+                                    {hasBuy ? (
+                                        <div className="spark-wrap">
+                                            <strong>Kupno</strong>
+                                            <Sparkline data={buys} width={880} height={64} startLabel={start} endLabel={end} />
+                                        </div>
+                                    ) : null}
                                 </div>
-                            )}
-                        </div>
+                            );
+                        })()}
 
                         {/* Tabela szczegółowa */}
                         <div style={{marginTop:12, overflowX:'auto'}}>
